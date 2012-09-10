@@ -1,9 +1,15 @@
 ## in a separate test file
+
+use strict;
 use Test::More;
 
-eval 'use Test::Spelling;';
+eval {
+    require Test::Spelling;
+    Test::Spelling->import();
+};
 
 plan( skip_all => 'Test::Spelling not installed; skipping' ) if $@;
+
 add_stopwords(<DATA>);
 all_pod_files_spelling_ok();
 

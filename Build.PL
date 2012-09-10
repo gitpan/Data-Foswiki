@@ -62,7 +62,7 @@ my $builder = $class->new(
     create_makefile_pl => 'small',
     meta_add           => {
         resources => {
-            homepage   => 'http://sourceforge.net/projects/module-build',
+            homepage   => 'http://foswiki.org/',
             repository => 'git://github.com/SvenDowideit/Data-Foswiki.git',
 
             #            x_twitter => 'http://twitter.com/SvenDowideit/',

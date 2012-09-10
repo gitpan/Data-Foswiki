@@ -13,11 +13,11 @@ Data::Foswiki - Read and Write Foswiki topics
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 =head1 SYNOPSIS
 
@@ -30,7 +30,7 @@ Quickly read and write Foswiki topics into a hash
     open($fh, '<', '/var/lib/foswiki/data/System/FAQSimultaneousEdits.txt') or die 'open failure';
     my @topic_text = <$fh>;
     close($fh);
-    my $topic = Data::Foswiki::deserialise(@topic_text);
+    my $topic = Data::Foswiki::Test2::deserialise(@topic_text);
     
     $topic->{TOPICINFO}{author} = 'NewUser';
     $topic->{PARENT}{name} = 'WebHome';
@@ -46,7 +46,7 @@ Quickly read and write Foswiki topics into a hash
     
     #write
     open($fh, '>', '/var/lib/foswiki/data/System/FAQNewFaq.txt') or die 'write failure';
-    print $fh Data::Foswiki::serialise($topic);
+    print $fh Data::Foswiki::Test::serialise($topic);
     close($fh);
     
 
@@ -63,80 +63,77 @@ Parse a string, or array of strings and convert into a hash of the Foswiki topic
 
 (apparently Perl can be faster reading a file into an array)
 
+if you pass in an undef / empty string, you will get undef back
+
 =cut
 
+my $METAINFOregex   = qr/^\%META:(TOPICINFO){(.*)}\%\n?$/o;
+my $METAPARENTregex = qr/^\%META:(TOPICPARENT){(.*)}\%\n?$/o;
+my $METAregex       = qr/^\%META:(\S*){(.*)}\%\n?$/o;
+
 sub deserialise {
-    my @str = @_;
-    my %topic = ( 'TEXT', '' );
+    my $topic;
+
+    return $topic unless ( $#_ >= 0 );
 
     #convert a string into an array
-    if ( $#str == 0 ) {
-        @str = split( /\n/, $str[0] );
+    if ( $#_ == 0 ) {
+        return $topic if ( $_[0] eq '' );
+        if ( $_[0] =~ /\n/ ) {
+            return deserialise( split( /\n/, $_[0] ) );
+        }
     }
 
+    my $start = 0;
+    my $end   = -1;
+
+    #I can test $_[$start] rather than defined($_[$start])
+    #  because an empty line still would not match the regex
     # first get rid of the leading META
-    if ( defined( $str[0] ) && $str[0] =~ /\%META:(TOPICINFO){(.*?)}\%\n?$/ ) {
-        my $type   = $1;
-        my $params = $2;
-        my %meta;
-        _parse_params( $type, $params, \%meta, qw/author date version format/ );
-        $topic{$type} = \%meta;
-        shift(@str);
+    if ( $_[$start] && $_[$start] =~ $METAINFOregex ) {
+        $topic->{$1} = _readKeyValues($2);
+        $start++;
     }
-    if ( defined( $str[0] ) && $str[0] =~ /\%META:(TOPICPARENT){(.*?)}\%\n?$/ )
-    {
-        my $type   = $1;
-        my $params = $2;
-        my %meta;
-        _parse_params( $type, $params, \%meta, qw/name/ );
-        $topic{$type} = \%meta;
-        shift(@str);
+    if ( $_[$start] && $_[$start] =~ $METAPARENTregex ) {
+        $topic->{$1} = _readKeyValues($2);
+        $start++;
     }
 
     #then the trailing META
     my $trailingMeta;
-    while ( ( $#str >= 0 ) && $str[$#str] =~ /\%META:(.*?){(.*?)}\%\n?$/ ) {
+    while ( $_[$end] && $_[$end] =~ $METAregex ) {
+
+#should skip any TOPICINFO & TOPICPARENT, they are _only_ valid in one place in the file.
+        last if ( ( $1 eq 'TOPICINFO' ) || ( $1 eq 'TOPICPARENT' ) );
+
         $trailingMeta = 1;
-        my $type   = $1;
-        my $params = $2;
-        pop(@str);
+        $end--;
 
-        #should skip any TOPICINFO & TOPICPARENT, they are _only_ valid in one place in the file.
-        next if (($type eq 'TOPICINFO') || ($type eq 'TOPICINFO'));
-
-        my %meta;
-        if ( $type eq 'FORM' ) {
-            _parse_params( $type, $params, \%meta, qw/name/ );
-            $topic{$type} = \%meta;
+        my $meta = _readKeyValues($2);
+        if ( $1 eq 'FORM' ) {
+            $topic->{$1} = $meta;
         }
         else {
-            _parse_params( $type, $params, \%meta );
-            if ( exists( $meta{name} ) ) {
-                $topic{$type}{ $meta{name} } = \%meta;
+            if ( exists( $meta->{name} ) && $1 ne 'FORM' ) {
+                $topic->{$1}{ $meta->{name} } = $meta;
             }
             else {
-                $topic{$type} = \%meta;
+                $topic->{$1} = $meta;
             }
         }
     }
 
     #there is an extra newline added between TEXT and any trailing meta
-    pop(@str) if ( $trailingMeta && $str[$#str] =~ /^\n?$/ );
+    $end-- if ( $trailingMeta && $_[$end] =~ /^\n?$/o );
 
-    #and thus we're left with the topic text
-    if ( defined( $str[0] ) ) {
+    if ( $_[$start] ) {
 
-        #decide if the TEXT array already has \n at the ends
-        my $separator = "\n";
-        $separator = '' if ( $str[0] =~ /\n/ );
-        $topic{TEXT} = join( $separator, @str );
+ #TODO: not joining and just returning an arrayref is ~200 topics/s faster again
+ #but leaves the user to work out if there are \n's
+        $topic->{TEXT} =
+          join( ( ( $_[$start] =~ /\n/o ) ? '' : "\n" ), @_[ $start, $end ] );
     }
-    else {
-
-        #        $topic{TEXT} = '';
-    }
-
-    return \%topic;
+    return $topic;
 }
 
 =head2 serialise($hashref) -> string
@@ -176,30 +173,23 @@ sub serialise {
     return join( "\n", @text );
 }
 
-sub _parse_params {
-    my ( $metaname, $str, $meta, @attrs ) = @_;
-    my $args = _readKeyValues($str);
-    if ( $#attrs >= 0 ) {
-        map { $meta->{$_} = $args->{$_} if ( exists( $args->{$_} ) ); } @attrs;
-    }
-    else {
-        map { $meta->{$_} = $args->{$_} } keys(%$args);
-    }
-}
-
 #from Foswiki::Meta
 # STATIC Build a hash by parsing name=value comma separated pairs
 # SMELL: duplication of Foswiki::Attrs, using a different
 # system of escapes :-(
 sub _readKeyValues {
-    my ($args) = @_;
-    my %res;
+    my @arr = split( /="([^"]*)"\s*/, $_[0] );
 
-    # Format of data is name='value' name1='value1' [...]
-    $args =~ s/\s*([^=]+)="([^"]*)"/
-      $res{$1} = _dataDecode( $2 ), ''/ge;
+    #if the last attribute is an empty string, we're a bit naf
+    my $count = $#arr;
+    push( @arr, '' ) unless ( $count % 2 );
+    my $res;
+    for ( my $i = 1 ; $i <= $count ; $i = $i + 2 ) {
+        $arr[$i] =~ s/%([\da-f]{2})/chr(hex($1))/geio;
+        $res->{ $arr[ $i - 1 ] } = $arr[$i];
+    }
 
-    return \%res;
+    return $res;
 }
 
 sub _writeMeta {
@@ -287,4 +277,4 @@ See http://dev.perl.org/licenses/ for more information.
 
 =cut
 
-1;    # End of Data::Foswiki
+1;    # End of Data::Foswiki::Test

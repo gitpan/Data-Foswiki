@@ -16,10 +16,10 @@ name: Data-Foswiki
 provides:
   Data::Foswiki:
     file: lib/Data/Foswiki.pm
-    version: 0.01
+    version: 0.02
 requires:
   perl: 5.006
 resources:
-  homepage: http://sourceforge.net/projects/module-build
+  homepage: http://foswiki.org/
   repository: git://github.com/SvenDowideit/Data-Foswiki.git
-version: 0.01
+version: 0.02

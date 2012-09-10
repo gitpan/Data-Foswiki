@@ -2,7 +2,7 @@ NAME
     Data::Foswiki - Read and Write Foswiki topics
 
 VERSION
-    Version 0.01
+    Version 0.02
 
 SYNOPSIS
     Quickly read and write Foswiki topics into a hash
@@ -14,7 +14,7 @@ SYNOPSIS
         open($fh, '<', '/var/lib/foswiki/data/System/FAQSimultaneousEdits.txt') or die 'open failure';
         my @topic_text = <$fh>;
         close($fh);
-        my $topic = Data::Foswiki::deserialise(@topic_text);
+        my $topic = Data::Foswiki::Test2::deserialise(@topic_text);
     
         $topic->{TOPICINFO}{author} = 'NewUser';
         $topic->{PARENT}{name} = 'WebHome';
@@ -30,7 +30,7 @@ SYNOPSIS
     
         #write
         open($fh, '>', '/var/lib/foswiki/data/System/FAQNewFaq.txt') or die 'write failure';
-        print $fh Data::Foswiki::serialise($topic);
+        print $fh Data::Foswiki::Test::serialise($topic);
         close($fh);
 
 EXPORT
@@ -43,6 +43,8 @@ SUBROUTINES/METHODS
     Foswiki topic's data
 
     (apparently Perl can be faster reading a file into an array)
+
+    if you pass in an undef / empty string, you will get undef back
 
   serialise($hashref) -> string
     Serialise into a foswiki 'embedded' formatted string, ready for writing

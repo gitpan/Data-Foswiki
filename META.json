@@ -33,15 +33,15 @@
    "provides" : {
       "Data::Foswiki" : {
          "file" : "lib/Data/Foswiki.pm",
-         "version" : "0.01"
+         "version" : "0.02"
       }
    },
    "release_status" : "stable",
    "resources" : {
-      "homepage" : "http://sourceforge.net/projects/module-build",
+      "homepage" : "http://foswiki.org/",
       "repository" : {
          "url" : "git://github.com/SvenDowideit/Data-Foswiki.git"
       }
    },
-   "version" : "0.01"
+   "version" : "0.02"
 }

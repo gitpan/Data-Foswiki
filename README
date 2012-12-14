@@ -1,88 +1,13 @@
-NAME
-    Data::Foswiki - Read and Write Foswiki topics
 
-VERSION
-    Version 0.02
 
-SYNOPSIS
-    Quickly read and write Foswiki topics into a hash
+This archive contains the distribution Data-Foswiki,
+version 0.03:
 
-        use Data::Foswiki;
+  Read and Write Foswiki topics
 
-        #read
-        my $fh;
-        open($fh, '<', '/var/lib/foswiki/data/System/FAQSimultaneousEdits.txt') or die 'open failure';
-        my @topic_text = <$fh>;
-        close($fh);
-        my $topic = Data::Foswiki::Test2::deserialise(@topic_text);
-    
-        $topic->{TOPICINFO}{author} = 'NewUser';
-        $topic->{PARENT}{name} = 'WebHome';
-    
-        $topic->{TEXT} = "Some new text\n\n".$topic->{TEXT};
-        undef $topic->{TOPICMOVED};
-    
-        $topic->{FIELD}{TopicTitle}{attributes} = 'H';
-    
-        #add a new field that is not part of the form definition - if edited within foswiki, it willbe removed
-        #but its useful for importing
-        $topic->{FIELD}{NewField}{value} = 'test';
-    
-        #write
-        open($fh, '>', '/var/lib/foswiki/data/System/FAQNewFaq.txt') or die 'write failure';
-        print $fh Data::Foswiki::Test::serialise($topic);
-        close($fh);
+This software is copyright (c) 2012 by Sven Dowideit.
 
-EXPORT
-    A list of functions that can be exported. You can delete this section if
-    you don't export anything, such as for a purely object-oriented module.
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
-SUBROUTINES/METHODS
-  deserialise($text|@stringarray) -> $hash_ref
-    Parse a string, or array of strings and convert into a hash of the
-    Foswiki topic's data
-
-    (apparently Perl can be faster reading a file into an array)
-
-    if you pass in an undef / empty string, you will get undef back
-
-  serialise($hashref) -> string
-    Serialise into a foswiki 'embedded' formatted string, ready for writing
-    to disk.
-
-    Note: this does not take care of updating the topic revision and date
-    data
-
-AUTHOR
-    Sven Dowideit, "<SvenDowideit at fosiki.com>"
-
-BUGS
-    Please report any bugs or feature requests to "bug-data-foswiki at
-    rt.cpan.org", or through the web interface at
-    <http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Data-Foswiki>. I will be
-    notified, and then you'll automatically be notified of progress on your
-    bug as I make changes.
-
-SUPPORT
-    Foswiki support can be found in the #foswiki irc channel on
-    <irc://irc.freenode.net>, or from SvenDowideit
-    <mailto:SvenDowideit@fosiki.com>
-
-ACKNOWLEDGEMENTS
-TO DO
-    make an XS version, and try a few different approaches to parsing and
-    then benchmark them this would mean making this module into a facade to
-    the other implementations.
-
-    is it faster not to modify the array? (just keep start and end Text
-    indexes?)
-
-LICENSE AND COPYRIGHT
-    Copyright 2012 Sven Dowideit SvenDowideit@fosiki.com.
-
-    This program is free software; you can redistribute it and/or modify it
-    under the terms of either: the GNU General Public License as published
-    by the Free Software Foundation; or the Artistic License.
-
-    See http://dev.perl.org/licenses/ for more information.
 

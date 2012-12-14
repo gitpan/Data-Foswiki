@@ -17,7 +17,7 @@ Version 0.02
 
 =cut
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 =head1 SYNOPSIS
 
@@ -49,12 +49,6 @@ Quickly read and write Foswiki topics into a hash
     print $fh Data::Foswiki::Test::serialise($topic);
     close($fh);
     
-
-=head1 EXPORT
-
-A list of functions that can be exported.  You can delete this section
-if you don't export anything, such as for a purely object-oriented module.
-
 =head1 SUBROUTINES/METHODS
 
 =head2 deserialise($text|@stringarray) -> $hash_ref
@@ -67,11 +61,15 @@ if you pass in an undef / empty string, you will get undef back
 
 =cut
 
+our $isValidEmbedding_func;
+
 my $METAINFOregex   = qr/^\%META:(TOPICINFO){(.*)}\%\n?$/o;
 my $METAPARENTregex = qr/^\%META:(TOPICPARENT){(.*)}\%\n?$/o;
 my $METAregex       = qr/^\%META:(\S*){(.*)}\%\n?$/o;
 
 sub deserialise {
+#    use Data::Dumper;
+#    die 'deserialise'.Dumper($_[0]) if (ref(\$_[0]) ne 'STRING');
     my $topic;
 
     return $topic unless ( $#_ >= 0 );
@@ -80,7 +78,11 @@ sub deserialise {
     if ( $#_ == 0 ) {
         return $topic if ( $_[0] eq '' );
         if ( $_[0] =~ /\n/ ) {
-            return deserialise( split( /\n/, $_[0] ) );
+            my @lines = split( /\n/, $_[0] );
+            #split will not give you an empty trailing array element if \n is the last char in the string
+            #TODO: do i really need to make a copy of the array?
+            push(@lines, '') if ($_[0] =~ m/\n$/);
+            return deserialise( @lines );
         }
     }
 
@@ -91,25 +93,43 @@ sub deserialise {
     #  because an empty line still would not match the regex
     # first get rid of the leading META
     if ( $_[$start] && $_[$start] =~ $METAINFOregex ) {
-        $topic->{$1} = _readKeyValues($2);
-        $start++;
+        my $hash = _readKeyValues($2);
+        if (!$isValidEmbedding_func || &$isValidEmbedding_func(undef, $1, $hash)) {
+            $topic->{$1} = $hash;
+            $start++;
+        }
     }
+
+    #turns out that the trailing newline removeal code in LegacyMeta is terrible
+    # it removes a trailing newline even when there is a TOPICPARENT, and when there are rejected META's too
+    my $trailingMeta;
+
     if ( $_[$start] && $_[$start] =~ $METAPARENTregex ) {
-        $topic->{$1} = _readKeyValues($2);
-        $start++;
+        my $hash = _readKeyValues($2);
+        $trailingMeta++;
+        if (!$isValidEmbedding_func || &$isValidEmbedding_func(undef, $1, $hash)) {
+            $topic->{$1} = $hash;
+            $start++;
+        }        
     }
 
     #then the trailing META
-    my $trailingMeta;
     while ( $_[$end] && $_[$end] =~ $METAregex ) {
+        #LegacyMeta compatibility hack :/
+        $trailingMeta++;
 
 #should skip any TOPICINFO & TOPICPARENT, they are _only_ valid in one place in the file.
         last if ( ( $1 eq 'TOPICINFO' ) || ( $1 eq 'TOPICPARENT' ) );
 
-        $trailingMeta = 1;
+        my $meta = _readKeyValues($2);
+        if ($isValidEmbedding_func && ! &$isValidEmbedding_func(undef, $1, $meta)) {
+            last;
+        }
+        
+        #I had hoped that we only removed the newlines if there was valid trailing meta... but no
+        $trailingMeta++;
         $end--;
 
-        my $meta = _readKeyValues($2);
         if ( $1 eq 'FORM' ) {
             $topic->{$1} = $meta;
         }
@@ -125,13 +145,23 @@ sub deserialise {
 
     #there is an extra newline added between TEXT and any trailing meta
     $end-- if ( $trailingMeta && $_[$end] =~ /^\n?$/o );
+    #$end-- if ( $_[$end] =~ /^\n?$/o );
 
-    if ( $_[$start] ) {
+    if ( defined($_[$start]) ) {
 
- #TODO: not joining and just returning an arrayref is ~200 topics/s faster again
+ #TODO: not joining and just returning an arrayref is very much faster
  #but leaves the user to work out if there are \n's
+ #perhaps this is a reson to wrap it in a class and provide a text() :/
         $topic->{TEXT} =
-          join( ( ( $_[$start] =~ /\n/o ) ? '' : "\n" ), @_[ $start, $end ] );
+          join( ( ( $_[$start] =~ /\n/o ) ? '' : "\n" ), @_[ $start .. $#_ + $end + 1 ] );
+        #I'm not 100% sure about this, but if there's no trailing META, the unit tests suggest we need to add a \n
+        #if ($end == -1) {
+        #    $topic->{TEXT} .= "\n";
+        #}
+        #OMG THIS IS SO CRAP.
+        if (!$trailingMeta && $topic->{TEXT} =~ /^(%META:([^{]+){(.*)}%\n)/) {
+            $topic->{TEXT} =~ s/\n$//s;
+        }
     }
     return $topic;
 }
@@ -148,22 +178,30 @@ sub serialise {
     my $topic        = shift;
     my @ordered_keys = qw/TOPICINFO TOPICPARENT TEXT FORM TOPICMOVED FIELD/;
     my @topic_keys   = keys(%$topic);
+#use Data::Dumper;            
+#print STDERR ">>>+>>>>>".Dumper($topic)."<<<<<<<\n";
 
     #I thought there was an extra \n added..
-    #my $key_count    = $#topic_keys;
+    my $key_count    = $#topic_keys;
     my @text;
 
     my %done;
     foreach my $type ( @ordered_keys, @topic_keys ) {
+        last if ($key_count < 0);
         if ( !$done{$type} ) {
             $done{$type} = 1;
+            next unless (exists($topic->{$type}));
+#use Data::Dumper;            
+#print STDERR ">>>>>>>>".Dumper($topic->{$type})."<<<<<<<\n";
 
-            #$key_count--;
+            $key_count--;
             if ( $type eq 'TEXT' ) {
-                push( @text, $topic->{TEXT} )
-                  ;    # . ( $key_count >= 0 ? "\n" : '' );
+#print STDERR "TEXT == ".ref($topic->{TEXT})."\n";
+                push( @text, $topic->{TEXT} );
+                push( @text, '') if ( $key_count >= 0 );
             }
             else {
+                next unless (keys(%{$topic->{$type}}));
                 push( @text, _writeMeta( $type, $topic->{$type} ) );
             }
         }
@@ -195,8 +233,37 @@ sub _readKeyValues {
 sub _writeMeta {
     my $type = shift;
     my $hash = shift;
+    my $string = '';
+
+    while(my ($k, $v) = each(%$hash)) {
+        if (ref($v) eq 'HASH') {
+            $string .= "\n" if ($string ne '');
+            $string .= _writeMeta($type, $v);
+        } else {
+            #not a multi-value META (ie, TOPICINFO, TOPICPARENT, FORM)
+            last;
+        }
+    }
+    
+    if ($string eq '') {
+        $string .= '%META:' . $type . '{';
+        $string .= 'name="'.$hash->{name}.'" ' if (defined($hash->{name}));
+        foreach (keys %$hash) {
+            next if ($_ eq 'name');
+            $string .= $_.'="'._dataEncode( $hash->{$_} ).'" ';
+        }
+        #chop($string);
+        
+        $string.= '}%';
+    }
+#use Data::Dumper;
+#print STDERR ":::::".scalar(keys(%$hash))."::".Dumper($hash)."\n$string\n";
+    return $string;
+    ##################old code
 
     my @elements = _writeKeyValues( $type, $hash );
+#use Data::Dumper;
+#die "=====$type --".Dumper($hash)."--".Dumper(\@elements)."--\n" if (!defined($elements[0]));
     unless ( $elements[0] =~ /^%META/ ) {
         return '%META:' . $type . '{' . join( ' ', @elements ) . '}%';
     }
@@ -207,10 +274,9 @@ sub _writeKeyValues {
     my $type = shift;
     my $hash = shift;
 
+    my $name;
     return map {
 
-        #        if (exists($hash->{$_}{name}) && $hash->{$_}{name} eq $_) {
-        #print STDERR "---".$hash->{$_}."-".ref($hash->{$_})."--\n";
         if ( ref( $hash->{$_} ) eq 'HASH' ) {
 
             #META:TYPE{name=} hash of entries
